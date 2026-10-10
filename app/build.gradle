@@ -133,15 +133,26 @@ dependencies {
     coreLibraryDesugaring libs.desugar.jdk.libs.nio
 }
 
+// Create or write google-services.json automatically if provided, otherwise create a mock file
 tasks.register('createMockGoogleServices') {
     doLast {
-        if (secrets != null) {
-            new File("$projectDir/google-services.json").text = secrets
+        // First, try to read secrets passed as a Gradle project property (-Psecrets=...) or environment variable
+        def secretProp = project.hasProperty("secrets") ? project.property("secrets") : null
+        def secretEnv = System.getenv("GOOGLE_SERVICES_JSON") ?: System.getenv("SECRETS")
+        def secretsContent = (secretProp ?: secretEnv)?.toString()
+
+        // Destination inside the module (app/google-services.json)
+        def destFile = file("${projectDir}/google-services.json")
+
+        if (secretsContent) {
+            destFile.parentFile?.mkdirs()
+            destFile.text = secretsContent
+            println "Wrote google-services.json from provided secrets to ${destFile}"
             return
         }
-        def mockFile = file("src/debug/google-services.json")
-        if (!mockFile.exists()) {
-            mockFile.parentFile.mkdirs()
+
+        // If no secrets provided and file doesn't exist, create a mock google-services.json
+        if (!destFile.exists()) {
             def mockContent = """{
   "project_info": {
     "project_number": "123456789000",
@@ -172,7 +183,11 @@ tasks.register('createMockGoogleServices') {
   ],
   "configuration_version": "1"
 }"""
-            mockFile.text = mockContent
+            destFile.parentFile?.mkdirs()
+            destFile.text = mockContent
+            println "Created mock google-services.json at ${destFile}"
+        } else {
+            println "google-services.json already exists at ${destFile}"
         }
     }
 }
