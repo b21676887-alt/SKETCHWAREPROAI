@@ -26,6 +26,9 @@ jobs:
       short_sha: ${{ steps.set_sha.outputs.short_sha }}
     steps:
       - uses: actions/checkout@v6
+      
+      - name: Copy google-services.json
+        run: cp .github/Google-Mock-Services.json app/google-services.json
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
