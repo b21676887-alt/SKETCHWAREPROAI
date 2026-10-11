@@ -71,6 +71,7 @@ import pro.sketchware.util.ThemeUtils;
 import pro.sketchware.util.UI;
 import pro.sketchware.widgets.IconCustomWidget;
 import pro.sketchware.activities.editor.view.palette.WidgetsCreatorManager;
+import pro.sketchware.activities.design.DesignActivity;
 
 @SuppressLint({"ClickableViewAccessibility", "SetTextI18n"})
 public class ViewEditor extends RelativeLayout implements View.OnTouchListener {
@@ -565,6 +566,11 @@ public class ViewEditor extends RelativeLayout implements View.OnTouchListener {
         minDist = ViewConfiguration.get(context).getScaledTouchSlop();
 
         paletteWidget.cardView.setOnClickListener(view -> widgetsCreatorManager.showWidgetsCreatorDialog(-1));
+        paletteWidget.aicardView.setOnClickListener(view -> {
+            if (view.getContext() instanceof DesignActivity) {
+                ((DesignActivity) view.getContext()).launchAiGenerateLayout();
+            }
+        });
 
         colorSurfaceContainerHighest = ThemeUtils.getColor(deleteView, R.attr.colorSurfaceContainerHighest);
         colorCoolGreenContainer = ThemeUtils.getColor(deleteView, R.attr.colorCoolGreenContainer);

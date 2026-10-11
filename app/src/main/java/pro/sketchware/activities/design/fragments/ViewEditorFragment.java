@@ -166,7 +166,7 @@ public class ViewEditorFragment extends DesignProjectFragment implements MenuPro
         viewEditor.setFavoriteData(WidgetCollectionManager.getInstance().getWidgets());
     }
 
-    private void initialize(ProjectFileBean projectFileBean) {
+    public void initialize(ProjectFileBean projectFileBean) {
         this.projectFileBean = projectFileBean;
         isFabEnabled = projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB);
         viewEditor.initialize(sc_id, projectFileBean);
