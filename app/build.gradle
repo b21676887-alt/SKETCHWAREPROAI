@@ -1,13 +1,27 @@
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
+    id "com.google.gms.google-services"
+    id "com.google.firebase.crashlytics"
 }
 
 android {
     compileSdk = 36
 
-    def gitCommitHash = "git rev-parse HEAD".execute().text.trim()
-    def shortCommitHash = "git rev-parse --short HEAD".execute().text.trim()
+    // Resolve the git hash defensively: the build must not fail when git is not
+    // installed or the project was downloaded as a ZIP (no .git directory).
+    def gitCommitHash = "unknown"
+    def shortCommitHash = "unknown"
+    try {
+        def proc = "git rev-parse HEAD".execute(null, projectDir)
+        proc.waitFor()
+        if (proc.exitValue() == 0) {
+            gitCommitHash = proc.text.trim()
+            shortCommitHash = gitCommitHash.take(7)
+        }
+    } catch (Exception ignored) {
+        // git unavailable — keep "unknown"
+    }
 
     defaultConfig {
         applicationId = "pro.sketchware"
@@ -19,7 +33,6 @@ android {
         versionName = "v7.0.0-beta9"
 
         buildConfigField("String", "GIT_HASH", "\"${gitCommitHash}\"")
-
         buildConfigField("String", "SKETCHUB_API_KEY", "\"${System.getenv("SKETCHUB_API_KEY")}\"")
     }
 
@@ -117,6 +130,10 @@ dependencies {
 
     implementation libs.libsu
     implementation libs.insetter
+
+    // User Messaging Platform
+    implementation 'com.google.android.ump:user-messaging-platform:3.0.0'
+
     testImplementation "org.json:json:20240303"
 
     implementation(libs.javaparser.symbol.solver) {
@@ -136,12 +153,10 @@ dependencies {
 // Create or write google-services.json automatically if provided, otherwise create a mock file
 tasks.register('createMockGoogleServices') {
     doLast {
-        // First, try to read secrets passed as a Gradle project property (-Psecrets=...) or environment variable
         def secretProp = project.hasProperty("secrets") ? project.property("secrets") : null
         def secretEnv = System.getenv("GOOGLE_SERVICES_JSON") ?: System.getenv("SECRETS")
         def secretsContent = (secretProp ?: secretEnv)?.toString()
 
-        // Destination inside the module (app/google-services.json)
         def destFile = file("${projectDir}/google-services.json")
 
         if (secretsContent) {
@@ -151,7 +166,6 @@ tasks.register('createMockGoogleServices') {
             return
         }
 
-        // If no secrets provided and file doesn't exist, create a mock google-services.json
         if (!destFile.exists()) {
             def mockContent = """{
   "project_info": {
