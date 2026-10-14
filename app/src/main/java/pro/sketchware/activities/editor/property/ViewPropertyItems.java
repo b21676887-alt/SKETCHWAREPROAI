@@ -13,6 +13,15 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+import org.xmlpull.v1.XmlPullParserFactory;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.LinkedHashMap;
+import java.util.stream.Collectors;
+
 import pro.sketchware.beans.BlockBean;
 import pro.sketchware.beans.EventBean;
 import pro.sketchware.beans.LayoutBean;
@@ -76,6 +85,48 @@ public class ViewPropertyItems extends LinearLayout implements PropertyChangedCa
         label.setText(R.string.design_property_recent_message_nodata);
         addView(label);
     }
+    
+    private String getInjectedAttr(ViewBean bean, String attrName) {
+        LinkedHashMap<String, String> attributes = parseInjectString(bean.inject);
+        String value = attributes.get(attrName);
+        return value == null ? "" : value;
+    }
+
+    private String setInjectedAttr(ViewBean bean, String attrName, String newValue) {
+        LinkedHashMap<String, String> attributes = parseInjectString(bean.inject);
+        if (newValue == null || newValue.isEmpty()) {
+            attributes.remove(attrName);
+        } else {
+            attributes.put(attrName, newValue);
+        }
+        return attributes.entrySet().stream()
+                .map(entry -> entry.getKey() + "=\"" + entry.getValue() + "\"")
+                .collect(Collectors.joining("\n"));
+    }
+    
+    private LinkedHashMap<String, String> parseInjectString(String inject) {
+        LinkedHashMap<String, String> attributes = new LinkedHashMap<>();
+        if (inject == null || inject.trim().isEmpty()) return attributes;
+    
+        try {
+            XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
+            XmlPullParser parser = factory.newPullParser();
+            parser.setInput(new StringReader("<tag " + inject + "></tag>"));
+    
+            int eventType = parser.getEventType();
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
+                    for (int i = 0; i < parser.getAttributeCount(); i++) {
+                        attributes.put(parser.getAttributeName(i), parser.getAttributeValue(i));
+                    }
+                }
+                eventType = parser.next();
+            }
+        } catch (XmlPullParserException | IOException | RuntimeException ignored) {
+        }
+    
+        return attributes;
+    }
 
     private void addMarginAndGravityProperties(ViewBean bean) {
         if (getOrientation() == LinearLayout.VERTICAL) {
@@ -112,6 +163,7 @@ public class ViewPropertyItems extends LinearLayout implements PropertyChangedCa
             case "property_layout_gravity" -> addGravityProperty(property, bean.layout.layoutGravity);
             case "property_weight" -> addSimpleInputProperty(property, String.valueOf(bean.layout.weight));
             case "property_elevation" -> addSimpleInputProperty(property, String.valueOf(bean.layout.elevation));
+            case "property_visibility" -> addSimpleInputProperty(property, getInjectedAttr(bean, "android:visibility"));
             case "property_text" -> addSimpleInputProperty(property, bean.text.text);
             case "property_text_size" -> addSimpleInputProperty(property, String.valueOf(bean.text.textSize));
             case "property_text_style" -> addSelectorProperty(property, bean.text.textType);
@@ -694,6 +746,7 @@ public class ViewPropertyItems extends LinearLayout implements PropertyChangedCa
         }
 
         addPropertyForBean(bean, "property_elevation");
+        addPropertyForBean(bean, "property_visibility");
         addPropertyForBean(bean, "property_rotate");
         addPropertyForBean(bean, "property_alpha");
         addPropertyForBean(bean, "property_translation_x");
@@ -727,6 +780,8 @@ public class ViewPropertyItems extends LinearLayout implements PropertyChangedCa
                             bean.layout.weightSum = FormatUtil.safeParseInt(inputItem.getValue(), bean.layout.weightSum);
                     case "property_elevation" ->
                             bean.layout.elevation = FormatUtil.safeParseInt(inputItem.getValue(), bean.layout.elevation);
+                    case "property_visibility" ->
+                            bean.inject = setInjectedAttr(bean, "android:visibility", inputItem.getValue());
                     case "property_rotate" ->
                             bean.image.rotate = FormatUtil.safeParseInt(inputItem.getValue(), bean.image.rotate);
                     case "property_alpha" -> bean.alpha = FormatUtil.safeParseFloat(inputItem.getValue(), bean.alpha);
