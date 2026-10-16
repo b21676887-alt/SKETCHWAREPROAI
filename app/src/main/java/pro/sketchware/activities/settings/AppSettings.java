@@ -17,6 +17,8 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import pro.sketchware.activities.editor.manage.library.LibraryCategoryView;
@@ -55,6 +57,7 @@ import pro.sketchware.util.FileUtil;
 import pro.sketchware.util.SketchwareUtil;
 import pro.sketchware.util.UI;
 
+
 public class AppSettings extends BaseAppCompatActivity {
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -63,14 +66,14 @@ public class AppSettings extends BaseAppCompatActivity {
         var binding = ActivityAppSettingsBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         
+        ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (v, insets) -> {
+            androidx.core.graphics.Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        
         binding.topAppBar.setTitle(R.string.common_word_settings);
-        
-        // تطبيق الحواف لشريط التطبيق العلوي مع استبعاد الحشوة السفلية (false) لمنع الفراغات غير الضرورية
-        UI.addSystemWindowInsetToPadding(binding.appBarLayout, true, true, true, false);
-        
-        // تخصيص الحواف لعنصر التمرير مع تفعيل الحشوة السفلية فقط لتجنب تداخل أزرار التنقل مع المحتوى
-        UI.addWindowInsetToPadding(binding.contentScroll, WindowInsetsCompat.Type.systemBars(), false, false, false, true);
-        
+                        
         binding.topAppBar.setNavigationOnClickListener(Helper.getBackPressedClickListener(this));
         setupPreferences(binding.content);
 
