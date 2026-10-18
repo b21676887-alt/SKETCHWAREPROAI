@@ -12,6 +12,8 @@ import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Toast;
+import android.content.SharedPreferences;
+import android.content.Context;
 
 import androidx.appcompat.content.res.AppCompatResources;
 
@@ -30,6 +32,9 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import android.util.Pair;
+import java.util.List;
+import java.util.Collections;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -50,11 +55,13 @@ import io.github.rosemoe.sora.widget.CodeEditor;
 import io.github.rosemoe.sora.widget.component.EditorAutoCompletion;
 import io.github.rosemoe.sora.widget.schemes.EditorColorScheme;
 import io.github.rosemoe.sora.widget.schemes.SchemeDarcula;
+import io.github.rosemoe.sora.widget.schemes.SchemeEclipse;
+import io.github.rosemoe.sora.widget.schemes.SchemeGitHub;
+import io.github.rosemoe.sora.widget.schemes.SchemeNotepadXX;
 import io.github.rosemoe.sora.widget.schemes.SchemeVS2019;
 import pro.sketchware.util.Helper;
 import pro.sketchware.lib.code_editor.CodeEditorColorSchemes;
 import pro.sketchware.lib.code_editor.CodeEditorLanguages;
-import pro.sketchware.lib.code_editor.CodeEditorPreferences;
 import pro.sketchware.R;
 import pro.sketchware.activities.preview.LayoutPreviewActivity;
 import pro.sketchware.databinding.CodeEditorHsBinding;
@@ -65,18 +72,64 @@ import pro.sketchware.util.ThemeUtils;
 import pro.sketchware.util.UI;
 import pro.sketchware.util.XmlUtil;
 
+
+
 public class SrcCodeEditor extends BaseAppCompatActivity {
     public static final String FLAG_FROM_ANDROID_MANIFEST = "from_android_manifest";
+    public static final List<Pair<String, Class<? extends EditorColorScheme>>> KNOWN_COLOR_SCHEMES = List.of(
+            new Pair<>("Default", EditorColorScheme.class),
+            new Pair<>("GitHub", SchemeGitHub.class),
+            new Pair<>("Eclipse", SchemeEclipse.class),
+            new Pair<>("Darcula", SchemeDarcula.class),
+            new Pair<>("VS2019", SchemeVS2019.class),
+            new Pair<>("NotepadXX", SchemeNotepadXX.class)
+    );
     public static int languageId;
-    private CodeEditorPreferences editorPrefs;
+    public static SharedPreferences pref;
     private String beforeContent = "";
     private CodeEditorHsBinding binding;
     private boolean fromAndroidManifest;
     private String scId;
     private String activityName;
 
+    public static void loadCESettings(Context c, CodeEditor ed, String prefix) {
+        loadCESettings(c, ed, prefix, false);
+    }
+
+    public static void loadCESettings(Context c, CodeEditor ed, String prefix, boolean loadTheme) {
+        pref = c.getSharedPreferences("hsce", Activity.MODE_PRIVATE);
+
+        int text_size = pref.getInt(prefix + "_ts", 12);
+        int theme = pref.getInt(prefix + "_theme", 3);
+        boolean word_wrap = pref.getBoolean(prefix + "_ww", false);
+        boolean auto_c = pref.getBoolean(prefix + "_ac", true);
+        boolean auto_complete_symbol_pairs = pref.getBoolean(prefix + "_acsp", true);
+        boolean line_numbers = pref.getBoolean(prefix + "_ln", false);
+        boolean sticky_scroll = pref.getBoolean(prefix + "_ss", false);
+
+        if (loadTheme) selectTheme(ed, theme);
+        ed.setTextSize(text_size);
+        ed.setWordwrap(word_wrap);
+        ed.getProps().symbolPairAutoCompletion = auto_complete_symbol_pairs;
+        ed.getComponent(EditorAutoCompletion.class).setEnabled(auto_c);
+        ed.setLineNumberEnabled(line_numbers);
+        ed.getProps().stickyScroll = sticky_scroll;
+        ed.invalidate();
+    }
+
     public static void selectTheme(CodeEditor ed, int which) {
-        CodeEditorPreferences.applyTheme(ed, which);
+        if (!(ed.getColorScheme() instanceof TextMateColorScheme)) {
+            EditorColorScheme scheme = switch (which) {
+                case 1 -> new SchemeGitHub();
+                case 2 -> new SchemeEclipse();
+                case 3 -> new SchemeDarcula();
+                case 4 -> new SchemeVS2019();
+                case 5 -> new SchemeNotepadXX();
+                default -> new EditorColorScheme();
+            };
+
+            ed.setColorScheme(scheme);
+        }
     }
 
     public static void selectLanguage(CodeEditor ed, int which) {
@@ -200,10 +253,20 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
     }
 
     public static void showSwitchThemeDialog(Activity activity, CodeEditor codeEditor, DialogInterface.OnClickListener listener) {
-        int currentTheme = CodeEditorPreferences.detectThemeIndex(codeEditor);
+        EditorColorScheme currentScheme = codeEditor.getColorScheme();
+        var knownColorSchemesProperlyOrdered = new ArrayList<>(KNOWN_COLOR_SCHEMES);
+        Collections.reverse(knownColorSchemesProperlyOrdered);
+        int selectedThemeIndex = knownColorSchemesProperlyOrdered.stream()
+                .filter(pair -> pair.second.equals(currentScheme.getClass()))
+                .map(KNOWN_COLOR_SCHEMES::indexOf)
+                .findFirst()
+                .orElse(-1);
+        String[] themeItems = KNOWN_COLOR_SCHEMES.stream()
+                .map(pair -> pair.first)
+                .toArray(String[]::new);
         new MaterialAlertDialogBuilder(activity)
                 .setTitle(R.string.code_editor_select_theme)
-                .setSingleChoiceItems(CodeEditorPreferences.THEME_NAMES, currentTheme, listener)
+                .setSingleChoiceItems(themeItems, selectedThemeIndex, listener)
                 .setNegativeButton(R.string.common_word_cancel, null)
                 .show();
     }
@@ -296,25 +359,9 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
                 binding.editor.setColorScheme(CodeEditorColorSchemes.loadTextMateColorScheme(CodeEditorColorSchemes.THEME_GITHUB));
             }
             languageId = 2;
-        } else {
-            if (ThemeUtils.isDarkThemeEnabled(getApplicationContext())) {
-                binding.editor.setColorScheme(CodeEditorColorSchemes.loadTextMateColorScheme(CodeEditorColorSchemes.THEME_DRACULA));
-            }
         }
 
-        editorPrefs = new CodeEditorPreferences(this, "src");
-        editorPrefs.applyToEditor(binding.editor, true);
-
-        // Ensure dark mode always uses a dark color scheme as fallback
-        if (ThemeUtils.isDarkThemeEnabled(getApplicationContext())) {
-            EditorColorScheme currentScheme = binding.editor.getColorScheme();
-            if (!(currentScheme instanceof TextMateColorScheme)
-                    && !(currentScheme instanceof SchemeDarcula)
-                    && !(currentScheme instanceof SchemeVS2019)) {
-                binding.editor.setColorScheme(new SchemeDarcula());
-            }
-        }
-
+        loadCESettings(this, binding.editor, "act", true);
         loadToolbar();
 
         UI.addSystemWindowInsetToPadding(binding.appBarLayout, true, true, true, false);
@@ -370,6 +417,7 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
         {
             String title = getIntent().getStringExtra("title");
             binding.toolbar.setTitle(title);
+            SharedPreferences local_pref = getSharedPreferences("hsce", Activity.MODE_PRIVATE);
             Menu toolbarMenu = binding.toolbar.getMenu();
             toolbarMenu.clear();
             toolbarMenu.add(Menu.NONE, MENU_UNDO, Menu.NONE, Helper.getResString(R.string.code_editor_menu_undo)).setIcon(AppCompatResources.getDrawable(this, R.drawable.ic_mtrl_undo)).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
@@ -379,15 +427,15 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
                 toolbarMenu.add(Menu.NONE, MENU_LAYOUT_PREVIEW, Menu.NONE, Helper.getResString(R.string.code_editor_menu_layout_preview));
             }
             toolbarMenu.add(Menu.NONE, MENU_FIND_REPLACE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_find_replace));
-            toolbarMenu.add(Menu.NONE, MENU_WORD_WRAP, Menu.NONE, Helper.getResString(R.string.code_editor_menu_word_wrap)).setCheckable(true).setChecked(editorPrefs.getWordWrap());
+            toolbarMenu.add(Menu.NONE, MENU_WORD_WRAP, Menu.NONE, Helper.getResString(R.string.code_editor_menu_word_wrap)).setCheckable(true).setChecked(local_pref.getBoolean("act_ww", false));
             toolbarMenu.add(Menu.NONE, MENU_PRETTY_PRINT, Menu.NONE, Helper.getResString(R.string.code_editor_menu_pretty_print));
             toolbarMenu.add(Menu.NONE, MENU_FONT_SIZE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_font_size));
-            toolbarMenu.add(Menu.NONE, MENU_LINE_NUMBERS, Menu.NONE, Helper.getResString(R.string.code_editor_menu_line_numbers)).setCheckable(true).setChecked(editorPrefs.getLineNumbers());
-            toolbarMenu.add(Menu.NONE, MENU_STICKY_SCROLL, Menu.NONE, Helper.getResString(R.string.code_editor_menu_sticky_scroll)).setCheckable(true).setChecked(editorPrefs.getStickyScroll());
+            toolbarMenu.add(Menu.NONE, MENU_LINE_NUMBERS, Menu.NONE, Helper.getResString(R.string.code_editor_menu_line_numbers)).setCheckable(true).setChecked(local_pref.getBoolean("act_ln", false));
+            toolbarMenu.add(Menu.NONE, MENU_STICKY_SCROLL, Menu.NONE, Helper.getResString(R.string.code_editor_menu_sticky_scroll)).setCheckable(true).setChecked(local_pref.getBoolean("act_ss", false));
             toolbarMenu.add(Menu.NONE, MENU_SELECT_LANGUAGE, Menu.NONE, Helper.getResString(R.string.code_editor_select_language));
             toolbarMenu.add(Menu.NONE, MENU_SELECT_THEME, Menu.NONE, Helper.getResString(R.string.code_editor_select_theme));
-            toolbarMenu.add(Menu.NONE, MENU_AUTO_COMPLETE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_auto_complete)).setCheckable(true).setChecked(editorPrefs.getAutoComplete());
-            toolbarMenu.add(Menu.NONE, MENU_AUTO_COMPLETE_SYMBOL_PAIR, Menu.NONE, Helper.getResString(R.string.code_editor_menu_auto_complete_symbol_pair)).setCheckable(true).setChecked(editorPrefs.getSymbolPair());
+            toolbarMenu.add(Menu.NONE, MENU_AUTO_COMPLETE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_auto_complete)).setCheckable(true).setChecked(local_pref.getBoolean("act_ac", true));
+            toolbarMenu.add(Menu.NONE, MENU_AUTO_COMPLETE_SYMBOL_PAIR, Menu.NONE, Helper.getResString(R.string.code_editor_menu_auto_complete_symbol_pair)).setCheckable(true).setChecked(local_pref.getBoolean("act_acsp", true));
 
             binding.toolbar.setOnMenuItemClickListener(item -> {
 
@@ -454,42 +502,64 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
                         break;
 
                     case MENU_SELECT_THEME:
-                        editorPrefs.showThemeDialog(SrcCodeEditor.this, binding.editor);
+                        showSwitchThemeDialog(this, binding.editor, (dialog, which) -> {
+                            selectTheme(binding.editor, which);
+                            pref.edit().putInt("act_theme", which).apply();
+                            dialog.dismiss();
+                        });
                         break;
 
                     case MENU_WORD_WRAP:
                         item.setChecked(!item.isChecked());
                         binding.editor.setWordwrap(item.isChecked());
-                        editorPrefs.setWordWrap(item.isChecked());
+                        pref.edit().putBoolean("act_ww", item.isChecked()).apply();
                         break;
 
                     case MENU_FONT_SIZE:
-                        editorPrefs.showFontSizeDialog(SrcCodeEditor.this, binding.editor, null);
+                        // Simple font-size selection dialog (stores as act_ts)
+                        int[] sizes = new int[]{10, 12, 14, 16, 18, 20, 24};
+                        String[] labels = new String[sizes.length];
+                        int currentSize = pref.getInt("act_ts", 12);
+                        int checked = 0;
+                        for (int i = 0; i < sizes.length; i++) {
+                            labels[i] = String.valueOf(sizes[i]);
+                            if (sizes[i] == currentSize) checked = i;
+                        }
+                        new MaterialAlertDialogBuilder(this)
+                                .setTitle(Helper.getResString(R.string.code_editor_menu_font_size))
+                                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                                    int chosen = sizes[which];
+                                    binding.editor.setTextSize(chosen);
+                                    pref.edit().putInt("act_ts", chosen).apply();
+                                    d.dismiss();
+                                })
+                                .setNegativeButton(R.string.common_word_cancel, null)
+                                .show();
                         break;
 
                     case MENU_LINE_NUMBERS:
                         item.setChecked(!item.isChecked());
                         binding.editor.setLineNumberEnabled(item.isChecked());
-                        editorPrefs.setLineNumbers(item.isChecked());
+                        pref.edit().putBoolean("act_ln", item.isChecked()).apply();
                         break;
 
                     case MENU_STICKY_SCROLL:
                         item.setChecked(!item.isChecked());
                         binding.editor.getProps().stickyScroll = item.isChecked();
                         binding.editor.invalidate();
-                        editorPrefs.setStickyScroll(item.isChecked());
+                        pref.edit().putBoolean("act_ss", item.isChecked()).apply();
                         break;
 
                     case MENU_AUTO_COMPLETE_SYMBOL_PAIR:
                         item.setChecked(!item.isChecked());
                         binding.editor.getProps().symbolPairAutoCompletion = item.isChecked();
-                        editorPrefs.setSymbolPair(item.isChecked());
+                        pref.edit().putBoolean("act_acsp", item.isChecked()).apply();
                         break;
 
                     case MENU_AUTO_COMPLETE:
                         item.setChecked(!item.isChecked());
                         binding.editor.getComponent(EditorAutoCompletion.class).setEnabled(item.isChecked());
-                        editorPrefs.setAutoComplete(item.isChecked());
+                        pref.edit().putBoolean("act_ac", item.isChecked()).apply();
                         break;
 
                     case MENU_LAYOUT_PREVIEW:
@@ -507,7 +577,15 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
     @Override
     public void onStop() {
         super.onStop();
-        editorPrefs.saveTextSizeFromEditor(binding.editor, getResources().getDisplayMetrics().scaledDensity);
+        float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
+        // Save text size in dp (consistent with loadCESettings usage)
+        if (pref != null) {
+            pref.edit().putInt("act_ts", (int) (binding.editor.getTextSizePx() / scaledDensity)).apply();
+        } else {
+            // fallback: init pref then save
+            pref = getSharedPreferences("hsce", Activity.MODE_PRIVATE);
+            pref.edit().putInt("act_ts", (int) (binding.editor.getTextSizePx() / scaledDensity)).apply();
+        }
     }
 
     private boolean isFileInLayoutFolder() {
